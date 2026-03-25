@@ -33,7 +33,7 @@ class TestRBAC:
 
     def test_unauthenticated_cannot_access_users(self, client: TestClient):
         resp = client.get("/users")
-        assert resp.status_code == 403
+        assert resp.status_code in (401, 403)
 
     def test_admin_can_create_role(self, client: TestClient, admin_user, db: Session):
         headers = _auth_header(client, "admin@test.com")

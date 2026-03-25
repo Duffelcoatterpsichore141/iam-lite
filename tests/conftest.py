@@ -1,10 +1,12 @@
 """
 Fixtures compartilhadas para todos os testes.
-Usa banco SQLite em memória para isolamento total.
+Usa banco SQLite em memória e fakeredis para isolamento total — sem dependências externas.
 """
 import uuid
 from typing import Generator
+from unittest.mock import patch
 
+import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -14,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.security import hash_password
 from app.domain.models import Role, System, User
 from app.infra.database.session import Base, get_db
-from app.infra.redis.client import token_store
+import app.infra.redis.client as _redis_module
 from main import app
 
 TEST_DB_URL = "sqlite:///:memory:"
@@ -25,6 +27,14 @@ engine_test = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(bind=engine_test)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def fake_redis_session():
+    """Substitui o Redis real por fakeredis em toda a sessão de testes."""
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    with patch.object(_redis_module.token_store, "_r", fake):
+        yield fake
 
 
 @pytest.fixture(scope="session", autouse=True)
