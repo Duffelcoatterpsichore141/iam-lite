@@ -1,8 +1,11 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables or .env file."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -26,10 +29,11 @@ class Settings(BaseSettings):
     OAUTH2_ISSUER: str = "http://localhost:8000"
     OAUTH2_AUDIENCE: str = "iam-lite-api"
 
-    FIRST_ADMIN_EMAIL: str = "admin@iam-lite.local"
-    FIRST_ADMIN_PASSWORD: str = "Admin@2025!"
+    FIRST_ADMIN_EMAIL: str
+    FIRST_ADMIN_PASSWORD: str
 
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return a cached Settings instance."""
     return Settings()
