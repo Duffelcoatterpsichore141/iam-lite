@@ -4,39 +4,54 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg
 *.egg-info/
 dist/
 build/
-*.egg
-.eggs/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
 
-# Virtualenvs
-.venv/
-venv/
-env/
-ENV/
-
-# Environment variables
+# Virtual environments
 .env
-.env.*
-!.env.example
+.venv
+venv/
+ENV/
+env/
+
+# Environment files (never commit real .env)
+.env.local
+.env.production
+.env.staging
+.env.*.local
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
-coverage.xml
-*.cover
+.tox/
+.mypy_cache/
+.ruff_cache/
 
-# IDEs
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+!logs/.gitkeep
 
 # Alembic
-migrations/versions/__pycache__/
-
-# Docker
-.docker/
+migrations/versions/*.pyc
