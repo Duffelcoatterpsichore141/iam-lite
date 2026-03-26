@@ -1,431 +1,223 @@
-# IAM Lite — Identity & Access Management
+# IAM Lite
 
-Sistema centralizado de gerenciamento de identidades e permissões de usuários em múltiplos sistemas corporativos fictícios, com fluxos de aprovação, controle de acesso granular e trilha de auditoria em conformidade com a **LGPD**.
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green?logo=fastapi)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql)
+![Redis](https://img.shields.io/badge/Redis-7-red?logo=redis)
+![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
----
-
-## Sumário
-
-1. [Visão Geral](#visão-geral)
-2. [Stack Técnica](#stack-técnica)
-3. [Arquitetura](#arquitetura)
-4. [Controle de Acesso: RBAC](#controle-de-acesso-rbac)
-5. [Controle de Acesso: ABAC](#controle-de-acesso-abac)
-6. [OAuth2 e OpenID Connect](#oauth2-e-openid-connect)
-7. [Fluxo de Aprovação](#fluxo-de-aprovação)
-8. [Trilha de Auditoria (LGPD)](#trilha-de-auditoria-lgpd)
-9. [Sistemas Fictícios Cadastrados](#sistemas-fictícios-cadastrados)
-10. [Configuração e Execução](#configuração-e-execução)
-11. [Endpoints da API](#endpoints-da-api)
-12. [Testes](#testes)
+Plataforma centralizada de **Gerenciamento de Identidades e Acessos** com RBAC, ABAC, OAuth2/OIDC, fluxo de aprovação e trilha de auditoria em conformidade com a LGPD.
+Projetada para ser simples de operar e fácil de estender em ambientes corporativos.
 
 ---
 
-## Visão Geral
+## Visao geral
 
-O IAM Lite resolve o problema de governança de acessos em ambientes corporativos onde múltiplos sistemas precisam de controle centralizado. Ele combina dois modelos de controle de acesso complementares (RBAC e ABAC), emite tokens JWT compatíveis com OAuth2/OIDC e mantém um histórico imutável de auditoria.
+Organizacoes que gerenciam multiplos sistemas internos enfrentam o desafio de controlar quem pode acessar o que, de onde e sob quais condicoes. O IAM Lite resolve esse problema oferecendo um ponto unico de controle de identidades, com suporte a politicas baseadas em atributos (ABAC), papeis hierarquicos (RBAC), emissao de tokens padrao OAuth2/OpenID Connect e um log de auditoria imutavel compativel com os requisitos de rastreabilidade da LGPD.
 
 ---
 
-## Stack Técnica
+## Funcionalidades
 
-| Componente | Tecnologia |
-|---|---|
-| Framework Web | FastAPI 0.111 |
-| Banco de Dados | PostgreSQL 16 + SQLAlchemy 2 |
-| Migrations | Alembic |
-| Autenticação | python-jose (JWT), bcrypt |
-| Cache / Sessões | Redis 7 |
-| Validação | Pydantic v2 |
-| Containerização | Docker + Docker Compose |
-| Testes | pytest + httpx |
+- Autenticacao via **OAuth2 Password Flow** com emissao de `access_token`, `refresh_token` e `id_token`
+- **RBAC** — tres perfis predefinidos (`admin`, `manager`, `viewer`) com permissoes granulares
+- **ABAC** — politicas configuráveis baseadas em atributos do usuario (departamento, localizacao) e do recurso
+- **Fluxo de aprovacao** — solicitacoes de acesso a sistemas com status `pending → approved/rejected`
+- **Revogacao de tokens** com blocklist em Redis (RFC 7009)
+- **Introspeccao de tokens** (RFC 7662)
+- **Trilha de auditoria imutavel** — todos os eventos sao registrados; nenhum endpoint permite edicao ou exclusao
+- Seed automatico com dados de exemplo prontos para desenvolvimento
 
 ---
 
 ## Arquitetura
 
-O projeto segue os princípios da **Clean Architecture**, separando responsabilidades em camadas bem definidas:
+O projeto segue uma arquitetura em camadas com responsabilidades bem delimitadas:
+
+```
+HTTP Request
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Routes  (app/api/routes/)      │  Validacao de entrada, autorizacao, resposta HTTP
+└─────────────────┬───────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────┐
+│  Services  (app/services/)      │  Regras de negocio, orquestracao, cache
+└─────────────────┬───────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────┐
+│  Domain Models (app/domain/)    │  Entidades SQLAlchemy + esquemas Pydantic
+└─────────────────┬───────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────┐
+│  Infra  (app/infra/)            │  Sessao PostgreSQL + cliente Redis
+└─────────────────────────────────┘
+```
+
+- **Routes** delegam toda logica de negocio para os services; nunca acessam o banco diretamente.
+- **Services** sao instancias singleton sem estado, injetadas via modulo.
+- **Domain/models** usa SQLAlchemy 2 com `Mapped` e `mapped_column` para tipagem completa.
+- **Domain/schemas** usa Pydantic v2 para validacao de entrada e serializacao de saida.
+
+---
+
+## Stack
+
+| Componente | Tecnologia | Motivo |
+|---|---|---|
+| API framework | FastAPI 0.111 | Suporte nativo a OpenAPI, tipagem, async |
+| ORM | SQLAlchemy 2 | Suporte a `Mapped`, sessao gerenciada, migrações via Alembic |
+| Banco de dados | PostgreSQL 16 | ACID, JSON nativo, maturidade |
+| Cache / blocklist | Redis 7 | Sub-millisecond para verificacao de tokens revogados |
+| Tokens | `python-jose` + `bcrypt` | JWT padrao com hashing seguro de senhas |
+| Validacao | Pydantic v2 | Desempenho, integração nativa com FastAPI |
+| Migrações | Alembic | Controle de versao do schema desacoplado do ORM |
+| Servidor ASGI | Uvicorn | Baixa latencia, suporte a HTTP/2 |
+
+---
+
+## Como rodar localmente
+
+### Com Docker (recomendado)
+
+```bash
+# 1. Clone o repositorio
+git clone https://github.com/jmello04/iam-lite.git
+cd iam-lite
+
+# 2. Crie o arquivo de variaveis de ambiente
+cp .env.example .env
+# Edite .env e defina SECRET_KEY, FIRST_ADMIN_EMAIL, FIRST_ADMIN_PASSWORD
+
+# 3. Suba os servicos
+docker compose up -d --build
+
+# 4. Execute o seed (opcional — popula dados de exemplo)
+docker compose exec api python seed.py
+
+# 5. Acesse a documentacao interativa
+open http://localhost:8000/docs
+```
+
+### Sem Docker
+
+**Pre-requisitos:** Python 3.12+, PostgreSQL 16, Redis 7.
+
+```bash
+# 1. Crie e ative o ambiente virtual
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+# 2. Instale as dependencias
+pip install -r requirements.txt
+
+# 3. Configure as variaveis de ambiente
+cp .env.example .env
+# Edite .env com as suas credenciais locais
+
+# 4. Execute as migracoes
+alembic upgrade head
+
+# 5. Opcional: execute o seed
+python seed.py
+
+# 6. Inicie o servidor
+uvicorn main:app --reload
+```
+
+---
+
+## Variaveis de ambiente
+
+Copie `.env.example` para `.env` e preencha os valores. Nenhum arquivo `.env` deve ser
+versionado.
+
+| Variavel | Descricao | Exemplo |
+|---|---|---|
+| `APP_NAME` | Nome exibido na documentacao da API | `IAM Lite` |
+| `APP_ENV` | Ambiente de execucao (`development`, `production`) | `development` |
+| `DEBUG` | Ativa logs SQL do SQLAlchemy | `false` |
+| `SECRET_KEY` | Chave HMAC para assinatura de JWTs — gere com `openssl rand -hex 32` | — |
+| `ALGORITHM` | Algoritmo JWT | `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Validade do access token em minutos | `30` |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Validade do refresh token em dias | `7` |
+| `ID_TOKEN_EXPIRE_MINUTES` | Validade do id token em minutos | `60` |
+| `DATABASE_URL` | DSN completo do PostgreSQL | `postgresql://user:pass@localhost:5432/iam_lite` |
+| `POSTGRES_USER` | Usuario do PostgreSQL (usado pelo Docker Compose) | `iam_user` |
+| `POSTGRES_PASSWORD` | Senha do PostgreSQL (usada pelo Docker Compose) | — |
+| `POSTGRES_DB` | Nome do banco (usado pelo Docker Compose) | `iam_lite` |
+| `REDIS_URL` | DSN do Redis | `redis://localhost:6379/0` |
+| `REDIS_PASSWORD` | Senha do Redis (opcional) | — |
+| `OAUTH2_ISSUER` | URL base do emissor de tokens | `http://localhost:8000` |
+| `OAUTH2_AUDIENCE` | Audience do JWT | `iam-lite-api` |
+| `FIRST_ADMIN_EMAIL` | E-mail do admin criado pelo seed — **obrigatorio** | `admin@example.com` |
+| `FIRST_ADMIN_PASSWORD` | Senha do admin criado pelo seed — **obrigatorio** | — |
+
+---
+
+## Como rodar os testes
+
+```bash
+# Com ambiente virtual ativo e dependencias instaladas
+pytest tests/ -v
+
+# Com relatorio de cobertura
+pytest tests/ -v --cov=app --cov-report=term-missing
+```
+
+Os testes usam `fakeredis` para simular o Redis e um banco SQLite em memoria — nenhuma
+infraestrutura externa e necessaria.
+
+---
+
+## Estrutura de pastas
 
 ```
 iam-lite/
 ├── app/
-│   ├── api/routes/        # Camada de apresentação — routers FastAPI
-│   ├── core/              # Núcleo: configuração, segurança, permissões
+│   ├── api/
+│   │   └── routes/          # Endpoints FastAPI (um arquivo por dominio)
+│   │       ├── auth.py      # /auth — token, refresh, introspect, revoke
+│   │       ├── users.py     # /users — CRUD de usuarios
+│   │       ├── roles.py     # /roles — CRUD de roles e permissoes
+│   │       ├── policies.py  # /policies — ABAC policies
+│   │       ├── systems.py   # /systems — sistemas gerenciados
+│   │       ├── access_requests.py  # /access-requests — fluxo de aprovacao
+│   │       ├── audit.py     # /audit — consulta de logs
+│   │       └── deps.py      # Dependencias compartilhadas (auth, RBAC)
+│   ├── core/
+│   │   ├── config.py        # Configuracoes carregadas do .env via Pydantic Settings
+│   │   ├── security.py      # Hashing, geracao e decodificacao de JWTs
+│   │   └── permissions.py   # Mapa estatico de permissoes por role
 │   ├── domain/
-│   │   ├── models/        # Entidades ORM (SQLAlchemy)
-│   │   └── schemas/       # DTOs de entrada/saída (Pydantic)
+│   │   ├── models/          # Entidades SQLAlchemy
+│   │   └── schemas/         # Esquemas Pydantic (request/response)
 │   ├── infra/
-│   │   ├── database/      # Sessão e engine do PostgreSQL
-│   │   └── redis/         # Client Redis e TokenStore
-│   └── services/          # Casos de uso (regras de negócio)
-├── migrations/            # Alembic — versionamento do schema
-└── tests/                 # Testes automatizados
+│   │   ├── database/        # Engine, sessao e Base declarativa
+│   │   └── redis/           # Pool de conexao e TokenStore
+│   └── services/            # Camada de servico (logica de negocio)
+│       ├── user_service.py
+│       ├── role_service.py
+│       ├── policy_service.py
+│       └── audit_service.py
+├── migrations/              # Scripts Alembic
+│   └── versions/
+├── tests/                   # Suite de testes
+├── main.py                  # Ponto de entrada FastAPI (app instance, middlewares, routers)
+├── seed.py                  # Script de populacao inicial do banco
+├── Dockerfile               # Build multi-stage (builder + runner)
+├── docker-compose.yml       # Orquestracao local (api + postgres + redis)
+├── .env.example             # Modelo de variaveis de ambiente
+└── requirements.txt         # Dependencias Python fixadas
 ```
 
 ---
 
-## Controle de Acesso: RBAC
+## Licenca
 
-**Role-Based Access Control** — cada usuário recebe uma ou mais *roles*. Cada role agrupa um conjunto de permissões sobre recursos.
-
-### Roles disponíveis
-
-| Role | Descrição |
-|---|---|
-| `admin` | Acesso total ao sistema |
-| `manager` | Pode aprovar/reprovar solicitações e gerenciar usuários |
-| `viewer` | Acesso somente leitura |
-
-### Como funciona
-
-```
-Usuário → tem Roles → cada Role tem Permissões (resource:action)
-```
-
-**Exemplo prático:**
-
-```json
-{
-  "user": "joao@empresa.com",
-  "roles": ["manager"],
-  "permissions": [
-    "users:read",
-    "users:write",
-    "access_requests:approve",
-    "audit:read"
-  ]
-}
-```
-
-O RBAC é verificado em todos os endpoints pela dependência `require_roles()`, que inspeciona as roles extraídas do JWT do usuário autenticado.
-
----
-
-## Controle de Acesso: ABAC
-
-**Attribute-Based Access Control** — as decisões de acesso levam em conta atributos do **sujeito** (usuário) e do **recurso** (sistema), não apenas a role.
-
-### Atributos suportados
-
-| Sujeito (usuário) | Recurso (sistema) |
-|---|---|
-| `department` | `classification` |
-| `location` | `owner_department` |
-|  | `slug` |
-
-### Exemplo de política ABAC
-
-```json
-{
-  "name": "allow-ti-erp-read",
-  "effect": "allow",
-  "subject_attributes": { "department": "TI" },
-  "resource_attributes": { "slug": "erp" },
-  "actions": ["read", "access"]
-}
-```
-
-Esta política permite que qualquer usuário do departamento **TI** acesse o sistema **ERP** com as ações `read` e `access`, independentemente de qual role ele possua.
-
-### Fluxo de avaliação ABAC
-
-```
-1. Coletar atributos do usuário autenticado
-2. Coletar atributos do recurso alvo
-3. Para cada política ativa:
-   a. Verificar se a ação está na lista de ações da política
-   b. Verificar se os atributos do sujeito batem
-   c. Verificar se os atributos do recurso batem
-   d. Se tudo bate → retornar o efeito (allow / deny)
-4. Se nenhuma política aplicar → negar por padrão
-```
-
-### RBAC + ABAC combinados
-
-O IAM Lite usa os dois modelos em conjunto:
-
-- **RBAC** para controle estrutural (quem pode fazer o quê globalmente)
-- **ABAC** para decisões contextuais em solicitações de acesso a sistemas
-
----
-
-## OAuth2 e OpenID Connect
-
-O IAM Lite implementa os fluxos OAuth2 com extensão OpenID Connect:
-
-### Tokens emitidos
-
-| Token | Formato | Conteúdo |
-|---|---|---|
-| `access_token` | JWT assinado HS256 | sub, roles, iss, aud, exp |
-| `refresh_token` | JWT assinado HS256 | sub, token_type=refresh |
-| `id_token` | JWT assinado HS256 | sub, email, name, department |
-
-### Fluxo Authorization Code (Password Grant — simplificado)
-
-```
-POST /auth/token
-{
-  "grant_type": "password",
-  "username": "joao@empresa.com",
-  "password": "Senha@2025!",
-  "scope": "openid profile email"
-}
-```
-
-Retorna `access_token`, `refresh_token` e `id_token`.
-
-### Renovação de token
-
-```
-POST /auth/refresh
-{ "grant_type": "refresh_token", "refresh_token": "<token>" }
-```
-
-### Validação (Introspection — RFC 7662)
-
-```
-POST /auth/introspect
-{ "token": "<access_token>" }
-```
-
-Resposta quando válido:
-```json
-{ "active": true, "sub": "uuid", "roles": ["manager"], "exp": 1234567890 }
-```
-
-### Revogação
-
-Ao revogar um token, ele é marcado no Redis imediatamente — qualquer requisição com esse token é rejeitada antes mesmo de consultar o banco de dados.
-
----
-
-## Fluxo de Aprovação
-
-Sistemas classificados como `critical` ou com `requires_approval=true` exigem revisão humana antes de liberar acesso.
-
-### Diagrama do fluxo
-
-```
-Usuário solicita acesso (POST /access-requests)
-        │
-        ▼
-O sistema verifica:
-├─ É crítico e requer aprovação?
-│   └─ SIM → status = "pending" → aguarda revisor
-│
-└─ Não requer aprovação E (RBAC ou ABAC permite)?
-    └─ SIM → status = "approved" automaticamente
-        │
-        ▼
-Gestor/Admin consulta solicitações pendentes
-(GET /access-requests?status=pending)
-        │
-        ├─ PATCH /access-requests/{id}/approve
-        │   └─ status = "approved", role atribuída ao usuário
-        │
-        └─ PATCH /access-requests/{id}/reject
-            └─ status = "rejected", comentário registrado
-```
-
-### Exemplo prático
-
-```bash
-# 1. Colaborador solicita acesso ao ERP (crítico)
-curl -X POST /access-requests \
-  -H "Authorization: Bearer <token_colaborador>" \
-  -d '{"system_id": "uuid-erp", "justification": "Relatório Q1"}'
-# → { "status": "pending" }
-
-# 2. Gestor lista solicitações pendentes
-curl /access-requests?status=pending \
-  -H "Authorization: Bearer <token_gestor>"
-
-# 3. Gestor aprova
-curl -X PATCH /access-requests/{id}/approve \
-  -H "Authorization: Bearer <token_gestor>" \
-  -d '{"comment": "Aprovado para relatório trimestral"}'
-# → { "status": "approved" }
-```
-
----
-
-## Trilha de Auditoria (LGPD)
-
-Todas as ações do sistema geram automaticamente um log de auditoria **imutável**:
-
-- Nenhum endpoint permite edição ou exclusão de logs
-- Cada entrada registra: **quem** (actor), **o quê** (action), **quando** (created_at), **de onde** (ip_address)
-- Logs são indexados por `action`, `resource_type` e `created_at` para consultas eficientes
-
-### Campos do log
-
-| Campo | Descrição |
-|---|---|
-| `actor_email` | E-mail de quem executou a ação |
-| `action` | Ação realizada (ex: `users.create`, `auth.login.failed`) |
-| `resource_type` | Tipo do recurso afetado (ex: `user`, `role`) |
-| `resource_id` | ID do recurso afetado |
-| `system_id` | Sistema relacionado (quando aplicável) |
-| `status` | `success` ou `failure` |
-| `ip_address` | IP de origem da requisição |
-| `detail` | Detalhes adicionais em JSON |
-
----
-
-## Sistemas Fictícios Cadastrados
-
-O seed popula o banco com os seguintes sistemas corporativos:
-
-| Sistema | Slug | Classificação | Requer Aprovação |
-|---|---|---|---|
-| ERP Corporativo | `erp` | critical | Sim |
-| CRM Comercial | `crm` | confidential | Não |
-| Portal RH | `rh` | confidential | Sim |
-| Intranet | `intranet` | internal | Não |
-
----
-
-## Configuração e Execução
-
-### Pré-requisitos
-
-- Docker e Docker Compose
-- Python 3.12+ (para desenvolvimento local)
-
-### Execução com Docker
-
-```bash
-# 1. Clonar o repositório
-git clone https://github.com/jmello04/iam-lite.git
-cd iam-lite
-
-# 2. Configurar variáveis de ambiente
-cp .env.example .env
-# Edite .env com seu SECRET_KEY
-
-# 3. Subir os serviços
-docker compose up -d
-
-# 4. Executar migrations
-docker compose exec api alembic upgrade head
-
-# 5. Popular banco com dados iniciais
-docker compose exec api python seed.py
-```
-
-### Execução local (desenvolvimento)
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-cp .env.example .env
-# Configure DATABASE_URL e REDIS_URL apontando para instâncias locais
-
-alembic upgrade head
-python seed.py
-uvicorn main:app --reload
-```
-
-### Acessar a documentação
-
-- **Swagger UI:** http://localhost:8000/docs
-- **ReDoc:** http://localhost:8000/redoc
-
-### Credenciais do seed
-
-| Usuário | E-mail | Senha | Role |
-|---|---|---|---|
-| Administrador | admin@iam-lite.local | Admin@2025! | admin |
-| Gestora | gestor@empresa.com | Gestor@2025! | manager |
-| Colaborador | colaborador@empresa.com | Viewer@2025! | viewer |
-
----
-
-## Endpoints da API
-
-### Autenticação
-
-| Método | Endpoint | Descrição |
-|---|---|---|
-| POST | `/auth/token` | Login OAuth2 (password / client_credentials) |
-| POST | `/auth/refresh` | Renovar access token via refresh token |
-| POST | `/auth/introspect` | Validar token (RFC 7662) |
-| POST | `/auth/revoke` | Revogar token |
-
-### Usuários
-
-| Método | Endpoint | Role Mínima |
-|---|---|---|
-| POST | `/users` | admin |
-| GET | `/users` | manager |
-| GET | `/users/{id}` | próprio usuário / manager |
-| PATCH | `/users/{id}` | admin |
-| DELETE | `/users/{id}` | admin |
-
-### Roles & Permissões
-
-| Método | Endpoint | Role Mínima |
-|---|---|---|
-| POST | `/roles` | admin |
-| GET | `/roles` | manager |
-| POST | `/roles/{id}/permissions` | admin |
-| DELETE | `/roles/{id}/permissions/{perm_id}` | admin |
-
-### Políticas ABAC
-
-| Método | Endpoint | Role Mínima |
-|---|---|---|
-| POST | `/policies` | admin |
-| GET | `/policies` | manager |
-| DELETE | `/policies/{id}` | admin |
-
-### Solicitações de Acesso
-
-| Método | Endpoint | Role Mínima |
-|---|---|---|
-| POST | `/access-requests` | qualquer autenticado |
-| GET | `/access-requests` | próprio / manager |
-| PATCH | `/access-requests/{id}/approve` | manager |
-| PATCH | `/access-requests/{id}/reject` | manager |
-
-### Auditoria
-
-| Método | Endpoint | Role Mínima |
-|---|---|---|
-| GET | `/audit/logs` | manager |
-
-### Sistemas
-
-| Método | Endpoint | Role Mínima |
-|---|---|---|
-| POST | `/systems` | admin |
-| GET | `/systems` | qualquer autenticado |
-
----
-
-## Testes
-
-```bash
-# Rodar todos os testes com cobertura
-pytest tests/ -v --cov=app --cov-report=term-missing
-
-# Rodar apenas testes de autenticação
-pytest tests/test_auth.py -v
-
-# Rodar apenas testes de controle de acesso
-pytest tests/test_access_control.py -v
-
-# Rodar apenas testes de auditoria
-pytest tests/test_audit.py -v
-```
-
-Os testes utilizam banco SQLite em memória para máximo isolamento — sem necessidade de infraestrutura externa.
-
----
-
-## Licença
-
-MIT — livre para uso, modificação e distribuição.
+Distribuido sob a licenca **MIT**. Consulte o arquivo `LICENSE` para os termos completos.
